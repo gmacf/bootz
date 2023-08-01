@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/pem"
+	"fmt"
 
 	"github.com/openconfig/bootz/proto/bootz"
 	"github.com/openconfig/gnmi/errlist"
@@ -30,18 +32,29 @@ type EntityManager interface {
 
 type Service struct {
 	bootz.UnimplementedBootstrapServer
-	em     EntityManager
-	oc     *x509.Certificate
-	ocPriv *rsa.PrivateKey
+	em EntityManager
+	// PEM-encoded bytes of the x509 OC
+	oc []byte
+	// PEM-encoded bytes of the RSA OC private key
+	ocPriv []byte
 }
 
 func New(em EntityManager) *Service {
 	// TODO: Populate x509 Cert and RSA Private key with real values (or generate them).
 	return &Service{
 		em:     em,
-		oc:     &x509.Certificate{},
-		ocPriv: &rsa.PrivateKey{},
+		oc:     nil,
+		ocPriv: nil,
 	}
+}
+
+// privateKeyFromPem generates an RSA PrivateKey object from PEM bytes
+func privateKeyFromPem(raw []byte) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		return nil, fmt.Errorf("unable to decode PEM block")
+	}
+	return x509.ParsePKCS1PrivateKey(block.Bytes)
 }
 
 func (s *Service) GetBootstrapRequest(ctx context.Context, req *bootz.GetBootstrapDataRequest) (*bootz.GetBootstrapDataResponse, error) {
@@ -82,13 +95,19 @@ func (s *Service) GetBootstrapRequest(ctx context.Context, req *bootz.GetBootstr
 		return nil, errs
 	}
 	resp := &bootz.GetBootstrapDataResponse{
+		OwnershipCertificate: s.oc,
 		SignedResponse: &bootz.BootstrapDataSigned{
 			Responses: responses,
+			Nonce:     req.GetNonce(),
 		},
 	}
 	// Sign the response if Nonce is provided.
+	priv, err := privateKeyFromPem(s.ocPriv)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse ownership cert private key: %v", err)
+	}
 	if req.Nonce != "" {
-		if err := s.em.Sign(resp, s.ocPriv); err != nil {
+		if err := s.em.Sign(resp, priv); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to sign bootz response")
 		}
 	}
