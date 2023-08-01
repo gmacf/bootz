@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/rsa"
+	"crypto/x509"
 
 	"github.com/openconfig/bootz/proto/bootz"
 	"github.com/openconfig/gnmi/errlist"
@@ -23,16 +25,23 @@ type EntityManager interface {
 	ResolveChassis(*EntityLookup) (*ChassisEntity, error)
 	GetBootstrapData(*bootz.ControlCard) (*bootz.BootstrapDataResponse, error)
 	SetStatus(*bootz.ReportStatusRequest) error
-	Sign(*bootz.GetBootstrapDataResponse) error
+	Sign(*bootz.GetBootstrapDataResponse, *rsa.PrivateKey) error
 }
 
 type Service struct {
 	bootz.UnimplementedBootstrapServer
-	em EntityManager
+	em     EntityManager
+	oc     *x509.Certificate
+	ocPriv *rsa.PrivateKey
 }
 
 func New(em EntityManager) *Service {
-	return &Service{em: em}
+	// TODO: Populate x509 Cert and RSA Private key with real values (or generate them).
+	return &Service{
+		em:     em,
+		oc:     &x509.Certificate{},
+		ocPriv: &rsa.PrivateKey{},
+	}
 }
 
 func (s *Service) GetBootstrapRequest(ctx context.Context, req *bootz.GetBootstrapDataRequest) (*bootz.GetBootstrapDataResponse, error) {
@@ -79,7 +88,7 @@ func (s *Service) GetBootstrapRequest(ctx context.Context, req *bootz.GetBootstr
 	}
 	// Sign the response if Nonce is provided.
 	if req.Nonce != "" {
-		if err := s.em.Sign(resp); err != nil {
+		if err := s.em.Sign(resp, s.ocPriv); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to sign bootz response")
 		}
 	}

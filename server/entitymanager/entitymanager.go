@@ -1,8 +1,14 @@
 package entitymanager
 
 import (
+	"crypto"
+	"crypto/rsa"
+	"crypto/sha256"
+	"fmt"
+
 	"github.com/openconfig/bootz/proto/bootz"
 	"github.com/openconfig/bootz/server/service"
+	"google.golang.org/protobuf/proto"
 )
 
 type EM struct {
@@ -21,7 +27,20 @@ func (e *EM) SetStatus(req *bootz.ReportStatusRequest) error {
 }
 
 // Sign unmarshals the SignedResponse bytes then generates a signature from its Ownership Certificate private key.
-func (e *EM) Sign(resp *bootz.GetBootstrapDataResponse) error {
+func (e *EM) Sign(resp *bootz.GetBootstrapDataResponse, priv *rsa.PrivateKey) error {
+	if resp.GetSignedResponse() == nil {
+		return fmt.Errorf("empty signed response")
+	}
+	signedResponseBytes, err := proto.Marshal(resp.GetSignedResponse())
+	if err != nil {
+		return fmt.Errorf("unable to marshal signed response: %v", err)
+	}
+	hashed := sha256.Sum256(signedResponseBytes)
+	sig, err := rsa.SignPKCS1v15(nil, priv, crypto.SHA256, hashed[:])
+	if err != nil {
+		return fmt.Errorf("unable to sign response: %v", err)
+	}
+	resp.ResponseSignature = string(sig)
 	return nil
 }
 
