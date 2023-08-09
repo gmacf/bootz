@@ -2,10 +2,15 @@
 package entitymanager
 
 import (
+	"crypto"
+	"crypto/rsa"
+	"crypto/sha256"
+
 	"github.com/openconfig/bootz/proto/bootz"
 	"github.com/openconfig/bootz/server/service"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type InMemoryEntityManager struct {
@@ -37,12 +42,26 @@ func (m *InMemoryEntityManager) GetBootstrapData(*bootz.ControlCard) (*bootz.Boo
 	return nil, status.Errorf(codes.Unimplemented, "Unimplemented")
 }
 
-func (m *InMemoryEntityManager) SetStatus(*bootz.ReportStatusRequest) error {
+func (m *InMemoryEntityManager) SetStatus(req *bootz.ReportStatusRequest) error {
 	return status.Errorf(codes.Unimplemented, "Unimplemented")
 }
 
-func (m *InMemoryEntityManager) Sign(*bootz.GetBootstrapDataResponse) error {
-	return status.Errorf(codes.Unimplemented, "Unimplemented")
+// Sign unmarshals the SignedResponse bytes then generates a signature from its Ownership Certificate private key.
+func (m *InMemoryEntityManager) Sign(resp *bootz.GetBootstrapDataResponse, priv *rsa.PrivateKey) error {
+	if resp.GetSignedResponse() == nil {
+		return status.Errorf(codes.InvalidArgument, "empty signed response")
+	}
+	signedResponseBytes, err := proto.Marshal(resp.GetSignedResponse())
+	if err != nil {
+		return err
+	}
+	hashed := sha256.Sum256(signedResponseBytes)
+	sig, err := rsa.SignPKCS1v15(nil, priv, crypto.SHA256, hashed[:])
+	if err != nil {
+		return err
+	}
+	resp.ResponseSignature = string(sig)
+	return nil
 }
 
 func New() *InMemoryEntityManager {
@@ -51,7 +70,7 @@ func New() *InMemoryEntityManager {
 	fffChassis := service.ChassisEntity{
 		BootMode: "SecureOnly",
 	}
-	// This represents a modular chassis (e.g. contrains control cards).
+	// This represents a modular chassis (e.g. contains control cards).
 	modularChassis := service.ChassisEntity{
 		BootMode: "SecureOnly",
 	}
