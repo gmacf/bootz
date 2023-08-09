@@ -9,17 +9,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type EntityLookup struct {
-	Manufacturer string
-	SerialNumber string
-}
-
 type ChassisEntity struct {
 	BootMode string
 }
 
 type EntityManager interface {
-	ResolveChassis(*EntityLookup) (*ChassisEntity, error)
+	ResolveChassis(*bootz.ChassisDescriptor) (*ChassisEntity, error)
 	GetBootstrapData(*bootz.ControlCard) (*bootz.BootstrapDataResponse, error)
 	SetStatus(*bootz.ReportStatusRequest) error
 	Sign(*bootz.GetBootstrapDataResponse) error
@@ -31,15 +26,11 @@ type Service struct {
 }
 
 func (s *Service) GetBootstrapRequest(ctx context.Context, req *bootz.GetBootstrapDataRequest) (*bootz.GetBootstrapDataResponse, error) {
-	if len(req.ChassisDescriptor.ControlCards) == 0 {
-		return nil, status.Errorf(codes.InvalidArgument, "request must include at least one control card")
-	}
-	lookup := &EntityLookup{
-		req.ChassisDescriptor.Manufacturer,
-		req.ChassisDescriptor.SerialNumber,
+	if len(req.ChassisDescriptor.ControlCards) == 0 && req.ChassisDescriptor.SerialNumber == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "request must include at least one control card or a chassis serial number")
 	}
 	// Validate the chassis can be serviced
-	chassis, err := s.em.ResolveChassis(lookup)
+	chassis, err := s.em.ResolveChassis(req.ChassisDescriptor)
 
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to resolve chassis to inventory %+v", req.ChassisDescriptor)
