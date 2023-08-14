@@ -66,22 +66,17 @@ func (m *InMemoryEntityManager) Sign(resp *bootz.GetBootstrapDataResponse, priv 
 
 func New() *InMemoryEntityManager {
 	// TODO: Populate these values from a config file or command line flag.
-	// This represents a fixed form factor chassis (e.g. no control cards).
-	fffChassis := service.ChassisEntity{
-		BootMode: "SecureOnly",
-	}
-	// This represents a modular chassis (e.g. contains control cards).
-	modularChassis := service.ChassisEntity{
+	defaultChassis := service.ChassisEntity{
 		BootMode: "SecureOnly",
 	}
 
 	return &InMemoryEntityManager{
 		inventory: map[string]*service.ChassisEntity{
-			// Control cards 123A and 123B map to the modular chassis.
-			"123A": &modularChassis,
-			"123B": &modularChassis,
-			// Chassis 456 maps to the FFF chassis.
-			"456": &fffChassis,
+			// Control cards 123A and 123B map to a modular chassis.
+			"123A": &defaultChassis,
+			"123B": &defaultChassis,
+			// Fixed Form Chassis 456 maps to the FFF chassis.
+			"456": &defaultChassis,
 		},
 	}
 }
