@@ -56,25 +56,12 @@ type SecurityArtifacts struct {
 	TLSKeypair *tls.Certificate
 }
 
-// EntityLookup provides a way to resolve chassis and control cards
-// in the EntityManager.
-type EntityLookup struct {
-	Manufacturer string
-	SerialNumber string
-}
-
-// ChassisEntity provides the mode that the system is currently
-// configured.
-type ChassisEntity struct {
-	BootMode bpb.BootMode
-}
-
 // EntityManager maintains the entities and their states.
 type EntityManager interface {
-	ResolveChassis(*EntityLookup, string) (*ChassisEntity, error)
-	GetBootstrapData(*EntityLookup, *bpb.ControlCard) (*bpb.BootstrapDataResponse, error)
+	ResolveChassis(*bpb.ChassisDescriptor) (*bpb.Chassis, error)
+	GetBootstrapData(*bpb.Chassis, *bpb.ControlCard) (*bpb.BootstrapDataResponse, error)
 	SetStatus(*bpb.ReportStatusRequest) error
-	Sign(*bpb.GetBootstrapDataResponse, *EntityLookup, string) error
+	Sign(*bpb.GetBootstrapDataResponse, *bpb.Chassis, *bpb.ControlCard) error
 }
 
 // Service represents the server and entity manager.
@@ -88,26 +75,17 @@ func (s *Service) GetBootstrapData(ctx context.Context, req *bpb.GetBootstrapDat
 	log.Infof("==================== Received request for bootstrap data ====================")
 	log.Infof("=============================================================================")
 	fixedChasis := true
-	ccSerial := ""
 	chassisDesc := req.GetChassisDescriptor()
-	if len(chassisDesc.GetControlCards()) >= 1 {
-		fixedChasis = false
-		ccSerial = chassisDesc.GetControlCards()[0].GetSerialNumber()
-	}
 	log.Infof("Requesting for %v chassis %v", chassisDesc.GetManufacturer(), chassisDesc.GetSerialNumber())
-	lookup := &EntityLookup{
-		Manufacturer: chassisDesc.GetManufacturer(),
-		SerialNumber: chassisDesc.GetSerialNumber(),
-	}
 	// Validate the chassis can be serviced
-	chassis, err := s.em.ResolveChassis(lookup, ccSerial)
+	chassis, err := s.em.ResolveChassis(chassisDesc)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "failed to resolve chassis to inventory %+v, err: %v", chassisDesc, err)
 	}
 	log.Infof("Verified server can resolve chassis")
 
 	// If chassis can only be booted into secure mode then return error
-	if chassis.BootMode == bpb.BootMode_BOOT_MODE_SECURE && req.GetNonce() == "" {
+	if chassis.GetBootMode() == bpb.BootMode_BOOT_MODE_SECURE && req.GetNonce() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "chassis requires secure boot only")
 	}
 
@@ -118,19 +96,23 @@ func (s *Service) GetBootstrapData(ctx context.Context, req *bpb.GetBootstrapDat
 	log.Infof("==================== Fetching data for each control card ====================")
 	log.Infof("=============================================================================")
 	var responses []*bpb.BootstrapDataResponse
+	var activeControlCard *bpb.ControlCard
 	for _, v := range chassisDesc.GetControlCards() {
-		bootdata, err := s.em.GetBootstrapData(lookup, v)
+		if v.GetSerialNumber() == req.GetControlCardState().GetSerialNumber() {
+			activeControlCard = v
+		}
+		bootdata, err := s.em.GetBootstrapData(chassis, v)
 		if err != nil {
 			errs.Add(err)
-			log.Infof("Error occurred while retrieving data for Serial Number %v", v.SerialNumber)
+			log.Infof("Error occurred while retrieving data for Serial Number %v", v.GetSerialNumber())
 		}
 		responses = append(responses, bootdata)
 	}
 	if fixedChasis {
-		bootdata, err := s.em.GetBootstrapData(lookup, nil)
+		bootdata, err := s.em.GetBootstrapData(chassis, nil)
 		if err != nil {
 			errs.Add(err)
-			log.Infof("Error occurred while retrieving data for fixed chassis with serail number %v", lookup.SerialNumber)
+			log.Infof("Error occurred while retrieving data for fixed chassis with serial number %v", chassis.GetSerialNumber())
 		}
 		responses = append(responses, bootdata)
 	}
@@ -165,7 +147,7 @@ func (s *Service) GetBootstrapData(ctx context.Context, req *bpb.GetBootstrapDat
 		log.Infof("=============================================================================")
 		log.Infof("====================== Signing the response with nonce ======================")
 		log.Infof("=============================================================================")
-		if err := s.em.Sign(resp, lookup, req.GetControlCardState().GetSerialNumber()); err != nil {
+		if err := s.em.Sign(resp, chassis, activeControlCard); err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to sign bootz response")
 		}
 		log.Infof("Signed with nonce")

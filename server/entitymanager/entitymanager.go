@@ -54,7 +54,7 @@ type InMemoryEntityManager struct {
 
 // ResolveChassis returns an entity based on the provided lookup.
 // In cases when the serial for modular chassis is not set, it uses the controller card to find the chassis.
-func (m *InMemoryEntityManager) ResolveChassis(lookup *service.EntityLookup, ccSerial string) (*service.ChassisEntity, error) {
+func (m *InMemoryEntityManager) ResolveChassis(lookup *bpb.ChassisDescriptor) (*bpb.Chassis, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	chassis, found := m.chassisInventory[*lookup]

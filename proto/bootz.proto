@@ -214,10 +214,28 @@ message ReportStatusRequest {
 message EmptyResponse {
 }
 
+// Chassis contains attributes about the resolved chassis.
+message Chassis {
+ string hostname = 1;
+ BootMode boot_mode = 2;
+ FormFactor form_factor = 3;
+ string management_ip_address = 4;
+ string serial_number = 5;
+ string manufacturer = 6;
+ string part_number = 7;
+}
+
 // BootMode specifies if the chassis should utilize OV data.
 // Secure mode uses the OV validation.
 enum BootMode {
   BOOT_MODE_UNSPECIFIED = 0;
   BOOT_MODE_INSECURE = 1;
   BOOT_MODE_SECURE = 2;
+}
+
+// FormFactor specifies if the chassis is modular or fixed.
+enum FormFactor {
+  FORM_FACTOR_UNSPECIFIED = 0;
+  FORM_FACTOR_MODULAR = 1;
+  FORM_FACTOR_FIXED = 2;
 }
