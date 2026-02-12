@@ -17,6 +17,7 @@ package service
 
 import (
 	"context"
+	"crypto"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/base64"
@@ -47,6 +48,36 @@ const (
 	// Common state
 	stateAttested
 )
+
+// ArtifactManager is an interface for providing security artifacts to the Bootz service. These artifacts are
+// associated either with the Bootz server itself (e.g. the Bootz server trust anchor keypair), or with a specific
+// control card in a chassis (e.g. Ownership Vouchers, EK/PPK keys).
+type ArtifactManager interface {
+	// BootzServerTrustAnchorKeyPair returns the Bootz server trust anchor. This is the keypair that will generate
+	// the server's TLS certificate.
+	BootzServerTrustAnchorKeyPair() (crypto.PrivateKey, *x509.Certificate)
+	// OwnershipVoucher returns the ownership voucher for the given serial number and vendor.
+	OwnershipVoucher(ctx context.Context, serial string, vendor string) ([]byte, error)
+	// OwnershipCertificateKeypair returns the ownership certificate keypair for signing the bootstrap response.
+	OwnershipCertificateKeyPair() (crypto.PrivateKey, *x509.Certificate)
+	// PublicKey retrieves the EK or PPK public key for use in the BootstrapStream HMAC challenge.
+	PublicKey(ctx context.Context, serial string, vendor string) (crypto.PublicKey, epb.Key, error)
+	// Returns the pool of certificates that the server should use to validate the provided IDevID TLS certificates.
+	VendorCABundle() *x509.CertPool
+}
+
+// ChassisManager is an interface for managing the chassis in an organization's inventory. Chassis in an inventory are
+// identified by the IP address they use to communicate with Bootz server. The data provided by this interface relates
+// to the chassis as a whole, and not specific to any individual control card in the chassis.
+type ChassisManager interface {
+	// Resolve fetches details about a chassis with the given IP address.
+	Resolve(ctx context.Context, addr net.IP) (*types.Chassis, error)
+	// Update updates the status of a chassis in its bootstrapping lifecycle based on the provided status report.
+	Update(ctx context.Context, addr net.IP, req *bpb.ReportStatusRequest) error
+	// GenerateBootstrapData generates the bootstrap data (Boot Config, Credz, Certz, Authz, Pathz policies) for the
+	// given chassis.
+	GenerateBootstrapData(ctx context.Context, chassis *types.Chassis) (*bpb.BootstrapDataResponse, error)
+}
 
 // EntityManager maintains the entities and their states.
 type EntityManager interface {
