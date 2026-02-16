@@ -19,6 +19,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
@@ -61,7 +62,7 @@ type ArtifactManager interface {
 	// OwnershipCertificateKeypair returns the ownership certificate keypair for signing the bootstrap response.
 	OwnershipCertificateKeyPair() (crypto.PrivateKey, *x509.Certificate)
 	// PublicKey retrieves the EK or PPK public key for use in the BootstrapStream HMAC challenge.
-	PublicKey(ctx context.Context, serial string, vendor string) (crypto.PublicKey, epb.Key, error)
+	PublicKey(ctx context.Context, serial string, vendor string) (*rsa.PublicKey, epb.Key, error)
 	// Returns the pool of certificates that the server should use to validate the provided IDevID TLS certificates.
 	VendorCABundle() *x509.CertPool
 }
